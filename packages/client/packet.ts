@@ -16,7 +16,6 @@ export interface PacketRegistryEntry {
 export type FieldType<T> = (type: Coder<T>) => (target: any, key: string) => void;
 export type PacketType = (side: Side, id: number, state: State) => (constructor: Function) => void;
 
-
 export const PacketMetadata = Symbol("PacketMetadata");
 export const PacketFieldsMetadata = Symbol("PacketFieldsMetadata");
 
@@ -44,8 +43,33 @@ export function Field<T>(type: Coder<T>) {
         container[PacketFieldsMetadata].push({ name: key, type });
     };
 }
+
+export function createCoderFor(constructor: Function): Coder<any> {
+    const container = constructor.prototype
+    const fields: FieldRecord[] = container[PacketFieldsMetadata] || [];
+    return {
+        encode(buffer, value) {
+            fields.forEach((cod) => {
+                cod.type.encode(buffer, value[cod.name]);
+            });
+        },
+        decode(buffer) {
+            const value = newCall(constructor);
+            fields.forEach((cod) => {
+                try {
+                    value[cod.name] = cod.type.decode(buffer);
+                } catch (e) {
+                    console.error(new Error(`Exception during receiving packet ${constructor.name}`));
+                    console.error(e);
+                }
+            });
+            return value;
+        },
+    }
+}
+
 /**
- * Decoarte for you packet class.
+ * Decorate for you packet class.
  * This will generate a `PacketRegistryEntry` in your class prototype.
  *
  * @param side The side of your packet
@@ -55,31 +79,12 @@ export function Field<T>(type: Coder<T>) {
 export function Packet(side: Side, id: number, state: State, name = "") {
     return (constructor: Function) => {
         const container = constructor.prototype;
-        const fields: FieldRecord[] = container[PacketFieldsMetadata] || [];
         container[PacketMetadata] = {
             id,
             name: name || constructor.name,
             side,
             state,
-            coder: {
-                encode(buffer, value) {
-                    fields.forEach((cod) => {
-                        cod.type.encode(buffer, value[cod.name]);
-                    });
-                },
-                decode(buffer) {
-                    const value = newCall(constructor);
-                    fields.forEach((cod) => {
-                        try {
-                            value[cod.name] = cod.type.decode(buffer);
-                        } catch (e) {
-                            console.error(new Error(`Exception during reciving packet [${id}]${constructor.name}`));
-                            console.error(e);
-                        }
-                    });
-                    return value;
-                },
-            },
+            coder: createCoderFor(constructor),
         } as PacketRegistryEntry;
     };
 }

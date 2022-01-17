@@ -1,6 +1,7 @@
 import { deserializeSync, serializeSync } from "@xmcl/nbt";
 import ByteBuffer from "bytebuffer";
 import long from "long";
+import { encode } from 'querystring';
 import type { PacketRegistry } from "./channel";
 
 export interface SlotData {
@@ -10,12 +11,17 @@ export interface SlotData {
     nbt?: any;
 }
 
+export interface SidedPacketRegistry {
+    findCoderById(packetId: number): Coder<any>
+    getPacketId(message: any): number
+}
+
 /**
  * The packet encode/decode algorithm
  */
 export interface Coder<T> {
-    readonly encode: (buffer: ByteBuffer, data: T, context?: PacketRegistry) => void;
-    readonly decode: (buffer: ByteBuffer, context?: PacketRegistry) => T;
+    readonly encode: (buffer: ByteBuffer, data: T, context?: SidedPacketRegistry) => void;
+    readonly decode: (buffer: ByteBuffer, context?: SidedPacketRegistry) => T;
 }
 
 export const VarInt: Coder<number> = {
@@ -204,3 +210,38 @@ export const ByteArray: Coder<Int8Array> = {
         }
     },
 };
+
+export function ArrayOf<T>(coder?: Coder<T>): Coder<Array<T>> {
+    return {
+        decode(buffer, context) {
+            const len = buffer.readInt()
+            const type = buffer.readUint16()
+            if (coder) {
+                coder = context?.findCoderById(type)
+            }
+            if (!coder) {
+                throw new Error(`Cannot find coder for ${type}`)
+            }
+            const result: T[] = []
+            for (let i = 0; i < len; i++) {
+                result.push(coder.decode(buffer, context))
+            }
+            return result
+        },
+        encode(buffer, inst, context) {
+            buffer.writeInt(inst.length)
+            const id = context?.getPacketId(inst[0])
+            if (id === undefined) {
+                throw new Error(`Cannot find packet id for packet ${inst}`)
+            }
+            buffer.writeUint16(id)
+            coder = coder ?? context?.findCoderById(id)
+            if (coder === undefined) {
+                throw new Error(`Cannot find coder for packet ${inst}`)
+            }
+            for (const i of inst) {
+                coder.encode(buffer, i, context)
+            }
+        },
+    }
+}

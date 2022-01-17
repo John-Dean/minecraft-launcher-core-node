@@ -252,8 +252,16 @@ export abstract class PacketDecoder extends Transform {
         const packetId = this.readPacketId(message);
         const packetContent = message.slice();
         const coder = this.client.findCoderById(packetId, "server");
+        const client = this.client;
         if (coder) {
-            this.push(coder.decode(packetContent));
+            this.push(coder.decode(packetContent, {
+                findCoderById(packetId: number): Coder<any> {
+                    return client.findCoderById(packetId, "server")
+                },
+                getPacketId(message: any): number {
+                    return client.getPacketId(message, "server")
+                }
+            }));
         } else {
             console.error(`Unknown packet ${packetId} : ${packetContent.buffer}.`);
         }
@@ -286,12 +294,20 @@ export abstract class PacketEncoder extends Transform {
     protected abstract writePacketId(bb: ByteBuffer, id: number): void
 
     _transform(message: any, encoding: string, callback: TransformCallback) {
+        const client = this.client
         const id = this.client.getPacketId(message, "client");
         const coder = this.client.findCoderById(id, "client");
         if (coder && coder.encode) {
             const buf = new ByteBuffer();
             this.writePacketId(buf, id);
-            coder.encode(buf, message, this.client);
+            coder.encode(buf, message, {
+                findCoderById(packetId: number): Coder<any> {
+                    return client.findCoderById(packetId, "client")
+                },
+                getPacketId(message: any): number {
+                    return client.getPacketId(message, "client")
+                }
+            });
             buf.flip();
             this.push(buf.buffer.slice(0, buf.limit));
             callback();

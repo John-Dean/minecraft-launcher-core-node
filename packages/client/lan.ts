@@ -12,21 +12,18 @@ export interface MinecraftLanDiscover {
 }
 
 export class MinecraftLanDiscover extends EventEmitter {
-    private sock: Socket
 
-    constructor() {
+    constructor(readonly socket = createSocket({ type: "udp4", reuseAddr: true })) {
         super()
-        const sock = createSocket({ type: "udp4", reuseAddr: true })
-
-        sock.on("listening", () => {
-            const address = sock.address()
-            sock.addMembership(LAN_MULTICAST_ADDR, address.address)
-            sock.setMulticastTTL(128);
-            sock.setBroadcast(true)
+        socket.on("listening", () => {
+            const address = socket.address()
+            socket.addMembership(LAN_MULTICAST_ADDR, address.address)
+            socket.setMulticastTTL(128);
+            socket.setBroadcast(true)
         })
 
 
-        sock.on("message", (buf, remote) => {
+        socket.on("message", (buf, remote) => {
             const content = buf.toString("utf-8")
 
             const motdRegx = /\[MOTD\](.+)\[\/MOTD\]/g
@@ -41,13 +38,11 @@ export class MinecraftLanDiscover extends EventEmitter {
                 this.emit("discover", { motd, port, remote })
             }
         })
-
-        this.sock = sock
     }
 
     bind(): Promise<void> {
         return new Promise((resolve) => {
-            this.sock.bind(LAN_MULTICAST_PORT, "192.168.2.244", () => {
+            this.socket.bind(LAN_MULTICAST_PORT, "192.168.2.244", () => {
                 resolve()
             })
         })
@@ -55,7 +50,7 @@ export class MinecraftLanDiscover extends EventEmitter {
 
     destroy(): Promise<void> {
         return new Promise((resolve) => {
-            this.sock.close(resolve)
+            this.socket.close(resolve)
         })
     }
 }
@@ -67,29 +62,27 @@ export interface LanServerInfo {
 
 export class MinecraftLanBroadcaster {
     private intervalHandle: NodeJS.Timeout | undefined
-    private sock: Socket
 
     constructor(
+        readonly socket =  createSocket({ type: "udp4", reuseAddr: true }),
         readonly servers: LanServerInfo[] = [],
         readonly interval: number,
     ) {
-        const sock = createSocket({ type: "udp4", reuseAddr: true })
-        sock.addMembership(LAN_MULTICAST_ADDR)
-        sock.setMulticastTTL(120)
-        this.intervalHandle = setInterval(() => this.boradcast())
-        this.sock = sock
+        socket.addMembership(LAN_MULTICAST_ADDR)
+        socket.setMulticastTTL(120)
+        this.intervalHandle = setInterval(() => this.broadcast())
     }
 
-    boradcast() {
+    broadcast() {
         for (const inf of this.servers) {
-            this.sock.send(`[MOTD]${inf.motd}[/MOTD][AD]${inf.port}[/AD]`, LAN_MULTICAST_PORT, LAN_MULTICAST_ADDR, (err, bytes) => {
+            this.socket.send(`[MOTD]${inf.motd}[/MOTD][AD]${inf.port}[/AD]`, LAN_MULTICAST_PORT, LAN_MULTICAST_ADDR, (err, bytes) => {
                 // todo handle this
             })
         }
     }
 
     bind() {
-        this.sock.bind();
+        this.socket.bind();
     }
 
     destroy() {
@@ -97,7 +90,7 @@ export class MinecraftLanBroadcaster {
             clearInterval(this.intervalHandle)
         }
         return new Promise<void>((resolve) => {
-            this.sock.close(resolve)
+            this.socket.close(resolve)
         })
     }
 }
