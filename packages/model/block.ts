@@ -370,7 +370,7 @@ export class BlockModelFactory {
                 ];
 
                 if (face && face.rotation) {
-                    let amount = face.rotation;
+                    let amount = Number(face.rotation);
                     // check property
                     if (!([0, 90, 180, 270].indexOf(amount) >= 0)) {
                         console.error("The \"rotation\" property for \"" + face + "\" face is invalid (got \"" + amount + "\").");
