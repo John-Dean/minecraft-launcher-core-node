@@ -28,24 +28,20 @@ function createBitVector(arr: Long[], bitLen: number): number[] {
 
 /**
  * Seek block id from a long array (new chunk format)
- * @param data The block state id long array
- * @param bitLen The bit length
+ * @param blockstates The block state id long array
+ * @param indexLength The bit length
  * @param index The index (composition of xyz) in chunk
  * @param maxEntryValue The max entry value
+ *
+ * @author Adapted from: Jean-Baptiste Skutnik's <https://github.com/spoutn1k> {@link https://github.com/spoutn1k/mcmap/blob/fec14647c600244bc7808b242b99331e7ee0ec38/src/chunk_format_versions/section_format.cpp| Reference C++ code}
  */
-function seek(data: Long[], bitLen: number, index: number, maxEntryValue = Long.fromNumber(1).shiftLeft(bitLen).sub(1)) {
-    let offset = index * bitLen;
-    let j = offset >> 6;
-    let k = ((index + 1) * bitLen - 1) >>> 6;
-    let l = offset ^ j << 6;
-
-    if (j == k) {
-        return data[j].shiftRightUnsigned(l).and(maxEntryValue).toInt();
-    } else {
-        let shiftLeft = 64 - l;
-        const v = data[j].shiftRightUnsigned(l).or(data[k].shiftLeft(shiftLeft));
-        return v.and(maxEntryValue).toInt();
-    }
+function seek(blockstates: Long[], indexLength: number, index: number, maxEntryValue = Long.fromNumber(1).shiftLeft(indexLength).sub(1)) {
+    const blocksPerLong = Math.floor(64/indexLength);
+    const longIndex = Math.floor(index / blocksPerLong);
+    const padding = Math.floor((index - longIndex * blocksPerLong) * indexLength);
+    const long = blockstates[longIndex];
+    const blockIndex = (long.shiftRightUnsigned(padding)).and(maxEntryValue)
+    return blockIndex;
 }
 
 /**
@@ -170,7 +166,7 @@ export class WorldReader {
 
     public async getAdvancementsData(): Promise<AdvancementDataFrame[]> {
         const files = await this.fs.listFiles("advancements");
-        return Promise.all(files.filter(f => f.endsWith('.dat'))
+        return Promise.all(files.filter(f => f.endsWith(".dat"))
             .map((f) => this.fs.readFile(this.fs.join("advancements", f)).then((b) => deserialize<AdvancementDataFrame>(b))));
     }
 }
@@ -215,6 +211,33 @@ export namespace RegionReader {
         // the new region has a section.Y === -1
         return region.Level.Sections[0].Y === 0 ? region.Level.Sections[chunkY] : region.Level.Sections[chunkY + 1];
     }
+    /**
+     * Create an array of block ids from the chunk section given
+     * @param section The chunk section
+     */
+    export function getSectionBlockIdArray(section: NewRegionSectionDataFrame) {
+        let blockStates = section.BlockStates;
+        let palette = section.Palette;
+
+        if(blockStates == undefined) {
+            blockStates = (section.block_states || {}).data;
+        }
+        if(palette == undefined) {
+            palette = (section.block_states || {}).palette;
+        }
+
+        if(palette == undefined || blockStates == undefined) {
+            return new Uint8Array(4096);
+        }
+
+        let bitLength = Math.ceil(Math.log2(palette.length))
+        if(bitLength < 4) {
+            bitLength = 4;
+        }
+        const vector = createBitVector(blockStates, bitLength);
+
+        return vector;
+    }
 
     /**
      * Walk through all the position in this chunk and emit all the id in every position.
@@ -229,8 +252,7 @@ export namespace RegionReader {
             let blocks = section.Blocks;
             seekFunc = (i) => seekLegacy(blocks, data, add, i);
         } else {
-            let blockStates = section.BlockStates;
-            let vector = createBitVector(blockStates, computeBitLen(section.Palette, blockStates));
+            const vector = getSectionBlockIdArray(section);
             seekFunc = (i) => vector[i];
         }
         for (let i = 0; i < 4096; ++i) {
@@ -517,8 +539,12 @@ export type LegacyRegionSectionDataFrame = {
     Y: number;
 }
 export type NewRegionSectionDataFrame = {
-    BlockStates: Long[],
-    Palette: Array<BlockStateData>;
+    BlockStates?: Long[],
+    Palette?: Array<BlockStateData>;
+    block_states?: {
+        data:Long[],
+        palette:Array<BlockStateData>
+    }
     Data: number[];
     BlockLight: number[];
     SkyLight: number[];
