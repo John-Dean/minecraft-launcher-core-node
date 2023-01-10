@@ -118,6 +118,7 @@ function loadTexture(textureData: TextureData, textureLoader: TextureLoader) {
         texture = new Texture();
     }
 
+    texture.flipY = true;
     texture.userData.hasLoaded = promise;
 
     return texture;
