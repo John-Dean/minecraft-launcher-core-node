@@ -183,33 +183,6 @@ export namespace RegionReader {
         // the new region has a section.Y === -1
         return region.Level.Sections[0].Y === 0 ? region.Level.Sections[chunkY] : region.Level.Sections[chunkY + 1];
     }
-    /**
-     * Create an array of block ids from the chunk section given
-     * @param section The chunk section
-     */
-    export function getSectionBlockIdArray(section: NewRegionSectionDataFrame) {
-        let blockStates = section.BlockStates;
-        let palette = section.Palette;
-
-        if(blockStates == undefined) {
-            blockStates = (section.block_states || {}).data;
-        }
-        if(palette == undefined) {
-            palette = (section.block_states || {}).palette;
-        }
-
-        if(palette == undefined || blockStates == undefined) {
-            return new Uint8Array(4096);
-        }
-
-        let bitLength = Math.ceil(Math.log2(palette.length))
-        if(bitLength < 4) {
-            bitLength = 4;
-        }
-        const vector = createBitVector(blockStates, bitLength);
-
-        return vector;
-    }
 
     /**
      * Returns the palette, blockStates and bitLength for a section
