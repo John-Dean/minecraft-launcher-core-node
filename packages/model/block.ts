@@ -88,14 +88,14 @@ function loadTexture(textureData: TextureData, textureLoader: TextureLoader) {
                 function(fileContents) {
                     const decodedContents = decodeImage(fileContents);
                     if(decodedContents == undefined) {
-                        return;
+                        throw "error"
                     }
                     const width = decodedContents?.width;
                     const height = decodedContents?.height;
 
                     if(width == undefined || height == undefined) {
                         // Unable to decode the image
-                        return;
+                        throw "error"
                     }
 
                     const imageDataArray = decodedContents.getBytes();
@@ -108,6 +108,8 @@ function loadTexture(textureData: TextureData, textureLoader: TextureLoader) {
                         texture.image = imageData;
                         texture.needsUpdate = true;
                     }
+                    
+                    return texture;
                 }
             )
             .then(resolveFn)
